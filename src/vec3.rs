@@ -1,26 +1,32 @@
+use std::ops::{Add, Mul, Div, Sub};
 #[derive(Clone, Debug, Copy, PartialEq)]
-struct Vec3 {
-    e: [f32; 3]
+pub struct Vec3 {
+    pub e: [f32; 3]
 }
 
 impl Vec3 {
-    fn new(e0: f32, e1: f32, e2: f32) -> Self {
+    pub fn new(e0: f32, e1: f32, e2: f32) -> Self {
         Self { e: [e0, e1, e2]}
     }
 
-    fn get_x(&self) -> f32 {
+    pub fn dot(v: &Vec3, u: &Vec3) -> f32 {
+        let dot_product = u.e[0] * v.e[0] + u.e[1] * v.e[1] + u.e[2] * v.e[2];
+        return  dot_product as f32
+    }
+
+    pub fn get_x(&self) -> f32 {
         self.e[0]
     }
 
-    fn get_y(&self) -> f32 {
+    pub fn get_y(&self) -> f32 {
         self.e[1]
     }
 
-    fn get_z(&self) -> f32 {
+    pub fn get_z(&self) -> f32 {
         self.e[2]
     }
 
-    fn length(&self) -> f32 {
+    pub fn length(&self) -> f32 {
         (
             self.e[0] * self.e[0] 
             + self.e[1] * self.e[1] 
@@ -29,7 +35,7 @@ impl Vec3 {
         .sqrt()
     }
 
-    fn unit_vector(v: Vec3) -> Vec3 {
+    pub fn unit_vector(v: Vec3) -> Vec3 {
         return v / v.length()
     }
 }
