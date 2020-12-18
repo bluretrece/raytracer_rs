@@ -1,17 +1,30 @@
-use std::ops::{Add, Mul, Div, Sub};
 mod vec3;
 mod ray;
+mod hittable;
+mod hittable_list;
+mod hit_record;
+mod sphere;
+mod camera;
+
+use rand::*;
 use vec3::Vec3;
 use ray::Ray;
-use image::*;
+use sphere::Sphere;
+use hittable_list::HittableList;
+use hit_record::HitRecord;
+use hittable::Hittable;
+use camera::Camera;
+
+
+const IMAGE_WIDTH: i32 = 500;
+const IMAGE_HEIGHT:i32 = 500;
+const SAMPLES_PER_PIXEL: i32 = 100;
+const MAX_DEPTH: i32 = 50;
 
 
 /// TODO
 /// Handle image rendering with the image crate
 /// Support parallel operations with Rayon
-
-const IMAGE_WIDTH: i32 = 1000;
-const IMAGE_HEIGHT:i32 = 1000;
 
 pub fn hit_sphere(center: Vec3, radius:f32, r: &Ray) -> f32 {
     let oc: Vec3 = *r.origin() - center;
@@ -28,28 +41,104 @@ pub fn hit_sphere(center: Vec3, radius:f32, r: &Ray) -> f32 {
     }
 }
 
+pub fn random_in_unit_sphere() -> Vec3 {
+    let mut rng = rand::thread_rng();
 
-fn ray_color(r: &Ray) -> Vec3 {
-    let mut t: f32 = hit_sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, &r);
-    match t {
-        t if t > 0.0 => {
-            let n: Vec3 = Vec3::unit_vector(r.at(t) - Vec3::new(0.0,0.0,-1.0));
-            0.5 * Vec3::new(n.get_x() + 1.0, n.get_y() + 1.0, n.get_z() + 1.0)
+    loop {
+        let p = 2.0 * Vec3::new(rng.gen::<f32>(), rng.gen::<f32>(), rng.gen::<f32>())
+            - Vec3::new(1.0, 1.0, 1.0);
+
+        if p.squared_length() < 1.0 {
+            return p;
         }
-        _ => { 
+    }
+}
+
+fn depth_exceeded(depth: i32) -> bool {
+    depth <= 0
+}
+fn ray_color(r: &Ray, world: &dyn Hittable, depth: i32) -> Vec3 {
+    let mut rec = HitRecord::default();
+    
+    if depth_exceeded(depth) {
+        return Vec3::new(0.0,0.0,0.0)
+    }
+
+    let world_hit = world.hit(r, 0.0, 999999999.0, &mut rec);
+    match world_hit {
+        true => 
+        {
+            let target: Vec3 = rec.p + rec.normal + random_in_unit_sphere();
+            let ray: Ray = Ray::new(rec.p, target - rec.p);
+            let ray_color = 5.0 * ray_color(&ray, world, depth - 1) ;
+            
+            ray_color 
+        },
+        
+        false => 
+        {
             let unit_direction: Vec3 = Vec3::unit_vector(*r.direction());
-            t = 0.5 * (unit_direction.get_y() + 1.0);
+            let t = 0.5 * (unit_direction.get_y() + 1.0);
             Vec3::new(1.0, 1.0, 1.0) * (1.0 - t) + Vec3::new(0.5, 0.7,1.0) * t
         }
     }
 }
+
+// Utility
+fn clamp(x: f32, min: f32, max: f32) -> f32 {
+    if x < min {
+        return min
+    }
+    else if x > max {
+        return max
+    }
+
+    x
+}
+
+// generates a float between 0 and 1
+fn random_double() -> f32 {
+    let mut rng = rand::thread_rng();
+    let y: f32 = rng.gen(); 
+
+    y
+}
+
+fn write_color(pixel_color: Vec3, samples_per_pixel: i32) {
+    let mut r = pixel_color.get_x();
+    let mut g = pixel_color.get_y();
+    let mut b = pixel_color.get_z();
+
+    // We divide the color by the number of samples.
+    let scale = 1.0 / samples_per_pixel as f32;
+
+    r *= scale;
+    g *= scale;
+    b *= scale;
+
+
+    let ir = ( clamp(r, 0.0, 0.999) * 255.999) as i32;
+    let ig = ( clamp(g, 0.0, 0.999) * 255.999) as i32;
+    let ib = ( clamp(b, 0.0, 0.999) * 255.999) as i32;
+
+    println!("{} {} {}", ir, ig, ib);
+}
+
 fn main() {
-    /// IMAGE
+
+    // IMAGE
     let aspect_ratio = 16.0/9.0;
     let image_width = 400;
-    let image_height = (image_width as f32 / aspect_ratio) as f32;
+    let _image_height = (image_width as f32 / aspect_ratio) as f32;
 
-    /// CAMERA
+    // WORLD
+
+    let mut world: HittableList = HittableList::new();
+    world.objects.push(Box::new(Sphere {center: Vec3::new(0.0,0.0,-1.0), radius: 0.5}));
+    world.objects.push(Box::new(Sphere {center: Vec3::new(0.0,-100.5,-1.0), radius: 100.0}));
+
+    // CAMERA
+    let camera = Camera::new();
 
     let viewport_height:f32 = 2.0;
     let viewport_width  = aspect_ratio * viewport_height;
@@ -60,30 +149,45 @@ fn main() {
     let vertical: Vec3 = Vec3::new(0.0, viewport_height, 0.0);
     let lower_left_corner:Vec3 = origin - (horizontal/2.0) - (vertical/2.0) - (Vec3::new(0.0,0.0, focal_length));
 
-    /// RENDER
+    // RENDER
     println!("P3\n{} {} \n255\n", IMAGE_WIDTH, IMAGE_HEIGHT);
+    let mut rng = rand::thread_rng();
 
     for j in (0..IMAGE_HEIGHT).rev() {
         for i in 0..IMAGE_WIDTH {
-            let u = i as f32 / (IMAGE_WIDTH - 1) as f32;
-            let v:f32  = j as f32 / (IMAGE_HEIGHT - 1) as f32;
+            let mut pixel_color: Vec3 = Vec3::new(0.0,0.0,0.0);
+            for _ in 0..SAMPLES_PER_PIXEL {
+                let u: f32 = (i as f32 +  rng.gen::<f32>()) / (IMAGE_WIDTH - 1) as f32;
+                let v: f32  = (j as f32 + rng.gen::<f32>()) / (IMAGE_HEIGHT - 1) as f32;
+
+                let ray = camera.get_ray(u,v);
+                let ray_color: Vec3 = ray_color(&ray, &world, MAX_DEPTH);
+                pixel_color = pixel_color + ray_color;
+            }
+            write_color(pixel_color, SAMPLES_PER_PIXEL);
+            //let pixel_color = pixel_color / SAMPLES_PER_PIXEL as f32;
+
+            //println!("{} {} {}", ir, ig, ib);
+
+            //let ir = ( clamp(r, 0.0, 0.999) * 255.999) as i32;
+            //let ig = ( clamp(g, 0.0, 0.999) * 255.999) as i32;
+            //let ib = ( clamp(b, 0.0, 0.999) * 255.999) as i32;
             
-            let direction: Vec3 = lower_left_corner + (u * horizontal) + (v*vertical) - origin;
-            let ray = Ray::new(origin, direction);
 
-            let pixel_color = ray_color(&ray);
-
-            let ir = ( pixel_color.get_x() * 255.999) as i32;
-            let ig = ( pixel_color.get_y()* 255.999) as i32;
-            let ib = ( pixel_color.get_z()* 255.999) as i32;
-
-
-            println!("{} {} {}", ir, ig, ib);
             
+            //let direction: Vec3 = lower_left_corner + (u * horizontal) + (v*vertical) - origin;
+            
+
+         
+
+            // Write color should be here...
+
+
+
+
+            //println!("{} {} {}", ir, ig, ib);
         }    
     }
-
-
 }
 
 #[cfg(test)]
