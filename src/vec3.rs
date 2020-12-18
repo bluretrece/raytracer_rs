@@ -7,11 +7,9 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-
     pub fn squared_length(self) -> f32 {
         self.e[0] * self.e[0] + self.e[1] * self.e[1] + self.e[2] * self.e[2]
     }
-
 
     pub fn random() -> Self {
         let mut rng = rand::thread_rng();
@@ -20,6 +18,7 @@ impl Vec3 {
             e: [rng.gen_range(-1.0, 1.0),rng.gen_range(-1.0, 1.0),rng.gen_range(-1.0, 1.0)]
         }
     }
+
     pub fn new(e0: f32, e1: f32, e2: f32) -> Self {
         Self { e: [e0, e1, e2]}
     }
@@ -50,14 +49,13 @@ impl Vec3 {
         .sqrt()
     }
 
-    pub fn unit_vector(v: Vec3) -> Vec3 {
-        return v / v.length()
+    pub fn unit_vector(v: &Vec3) -> Vec3 {
+        return *v / v.length()
     }
 }
 
 impl Neg for Vec3 {
     type Output = Self;
-
     fn neg(self) -> Self::Output {
         Vec3 {
             e: [-self.e[0], -self.e[1], -self.e[2]]
@@ -67,7 +65,6 @@ impl Neg for Vec3 {
 
 impl Sub for Vec3 {
     type Output =  Self;
-
     fn sub(self, v: Self) -> Self {
         Self {
             e: [self.e[0] - v.e[0], self.e[1] - v.e[1], self.e[2] - v.e[2]]
